@@ -1,0 +1,61 @@
+from AlgorithmImports import *
+
+class SmaCrossAlgorithm(QCAlgorithm):
+    def Initialize(self):
+        self.SetStartDate(2020, 1, 1)    
+        self.SetEndDate(2024, 7, 1)      
+        self.SetCash(100000)             
+        
+        tickers = ["AAPL", "MSFT", "GOOG", "AMZN", "BAC", "TSLA", "NFLX", "NVDA", "WFC", "XOM",
+        "WMT", "PG", "T", "TMUS", "VZ", "JPM", "MGM", "SBUX","KO", "CVX"]
+        self.symbols = [self.AddEquity(ticker, Resolution.Daily).Symbol for ticker in tickers]
+        
+        self.sma = {}
+        self.entry_price = {}
+        self.stop_loss = {}
+        self.profit_target = {}
+
+        for symbol in self.symbols:
+            self.sma[symbol] = self.SMA(symbol, 50, Resolution.Daily)
+            self.entry_price[symbol] = None
+            self.stop_loss[symbol] = None
+            self.profit_target[symbol] = None
+            
+        self.SetWarmUp(50)  
+
+    def OnData(self, data):
+        for symbol in self.symbols:
+            if not self.sma[symbol].IsReady:
+                continue
+            
+            if symbol not in data or data[symbol] is None:
+                self.Debug(f"No data for {symbol} in current slice.")
+                continue
+
+            price = data[symbol].Close
+            sma = self.sma[symbol].Current.Value
+
+            
+            if self.Portfolio[symbol].Invested:
+                
+                if price <= self.stop_loss[symbol]:
+                    self.Liquidate(symbol)
+                    self.Debug(f"Stop loss hit for {symbol}. Liquidated at {price}")
+
+                
+                elif price >= self.profit_target[symbol]:
+                    self.Liquidate(symbol)
+                    self.Debug(f"Profit target hit for {symbol}. Liquidated at {price}")
+
+            
+            else:
+                if price > sma:
+                    self.SetHoldings(symbol, 0.1)  
+                    self.entry_price[symbol] = price
+                    self.stop_loss[symbol] = price * 0.90
+                    self.profit_target[symbol] = price * 1.50
+                    self.Debug(f"Entered position for {symbol} at {price}")
+
+    def OnOrderEvent(self, orderEvent):
+        if orderEvent.Status == OrderStatus.Filled:
+            self.Debug(f"Order filled for {orderEvent.Symbol} at {orderEvent.FillPrice}")
